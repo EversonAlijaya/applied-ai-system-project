@@ -1,0 +1,43 @@
+%% PawPal+ Applied AI System - System Architecture
+%% Data flow: plain-English request -> validate -> retrieve facts -> plan with LLM -> validate -> schedule -> plan output -> human review
+%% This diagram matches the actual implementation (see pawpal_system.py, ai_planner.py, app.py).
+
+flowchart TD
+    User([User types a plain-English<br/>pet-care request]):::human
+
+    subgraph Guards["Reliability & Guardrails"]
+        InputCheck["Input Validation<br/>reject empty / too long / unsafe text"]
+        OutputCheck["Output Guardrail<br/>check valid times, durations,<br/>and only known pets"]
+    end
+
+    subgraph AI["AI Layer (new for this project)"]
+        Retriever["RAG Retriever<br/>find relevant pet-care facts"]
+        KB[("Pet-Care<br/>Knowledge Base")]
+        Planner["LLM Planner / Agent (Claude)<br/>turn request + retrieved facts<br/>into structured Tasks"]
+    end
+
+    subgraph Core["Existing PawPal+ System"]
+        Objects["Owner / Pet / Task<br/>objects"]
+        Scheduler["Scheduler<br/>sort, filter, find conflicts,<br/>build the plan"]
+    end
+
+    Plan([Care plan + conflict warnings]):::output
+    Human([Human reviews the plan]):::human
+    Tests[/"Test Harness<br/>runs sample inputs,<br/>reports pass/fail"/]:::test
+
+    User --> InputCheck
+    InputCheck -->|valid text| Retriever
+    Retriever <-->|look up| KB
+    Retriever -->|request + facts| Planner
+    Planner -->|draft Tasks| OutputCheck
+    OutputCheck -->|approved Tasks| Objects
+    Objects --> Scheduler
+    Scheduler --> Plan
+    Plan --> Human
+
+    Tests -.->|feeds sample inputs| InputCheck
+    Tests -.->|checks final output| Plan
+
+    classDef human fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
+    classDef output fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+    classDef test fill:#fff3e0,stroke:#ef6c00,color:#e65100;
