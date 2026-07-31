@@ -3,6 +3,7 @@ from datetime import time
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Scheduler, Task
+from ai_assistant import plan_from_request
 
 
 def pet_name_for(task, owner):
@@ -62,6 +63,13 @@ owner.name = st.text_input("Owner name", value=owner.name)
 owner.update_availability(
     int(st.number_input("Time available today (minutes)", min_value=10, max_value=600, value=owner.available_minutes))
 )
+dcol1, dcol2 = st.columns(2)
+with dcol1:
+    day_start = st.time_input("Day starts", value=time(7, 0))
+with dcol2:
+    day_end = st.time_input("Day ends", value=time(21, 0))
+owner.set_preference("day_start", day_start.strftime("%H:%M"))
+owner.set_preference("day_end", day_end.strftime("%H:%M"))
 
 st.subheader("Pets")
 col1, col2, col3 = st.columns(3)
@@ -79,6 +87,55 @@ if owner.pets:
     st.write("Current pets: " + ", ".join(pet.describe() for pet in owner.pets))
 else:
     st.info("No pets yet. Add one above.")
+
+st.subheader("🤖 Plan with AI")
+if owner.pets:
+    st.caption(
+        "Describe what your pets need in plain English. The AI looks up pet-care "
+        "facts, drafts tasks, checks them, and adds the valid ones below."
+    )
+    ai_request = st.text_area(
+        "What do your pets need today?",
+        placeholder="e.g. Walk my senior dog in the morning and feed my cat twice a day",
+        key="ai_request",
+    )
+    if st.button("Plan with AI"):
+        if not ai_request.strip():
+            st.info("Type a request first.")
+        else:
+            try:
+                with st.spinner("Thinking..."):
+                    result = plan_from_request(owner, ai_request)
+            except Exception as error:
+                st.error(f"AI planning failed: {error}")
+            else:
+                if result.facts:
+                    with st.expander("Pet-care facts the AI used (RAG)", expanded=False):
+                        for fact in result.facts:
+                            st.markdown(f"- {fact.text}")
+                if result.accepted:
+                    st.success(f"Added {len(result.accepted)} task(s) to your pets:")
+                    st.table(
+                        [
+                            {
+                                "Pet": name,
+                                "Task": task.description,
+                                "Due": task.due_time or "anytime",
+                                "Minutes": task.duration,
+                                "Priority": task.priority,
+                                "Repeats": task.frequency,
+                            }
+                            for name, task in result.accepted
+                        ]
+                    )
+                else:
+                    st.info("The AI did not produce any tasks for this request.")
+                for warning in result.warnings:
+                    st.warning(f"Rejected by guardrails: {warning}")
+                for conflict in result.conflicts:
+                    st.warning(f"⚠ {conflict}")
+else:
+    st.caption("Add a pet first, then the AI can plan tasks for it.")
 
 st.subheader("Tasks")
 if owner.pets:
