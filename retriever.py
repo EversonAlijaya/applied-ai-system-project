@@ -110,18 +110,19 @@ def load_facts(knowledge_dir: str = DEFAULT_KNOWLEDGE_DIR) -> list:
     return facts
 
 
-def retrieve(query: str, facts: list, top_k: int = 3) -> list:
+def retrieve(query: str, facts: list, top_k: int = 3, min_score: int = 2) -> list:
     """Return the top_k facts most relevant to the query.
 
     Relevance = how many meaningful words the fact shares with the query.
-    Facts that share no words are dropped. Results are sorted best-first.
+    Only facts scoring at least min_score are kept, which filters out weak
+    single-word matches that are usually unrelated. Results are sorted best-first.
     """
     query_words = _tokens(query)
     scored = []
     for fact in facts:
         fact_words = _tokens(fact.text)
         overlap = len(query_words & fact_words)  # words in BOTH sets
-        if overlap > 0:
+        if overlap >= min_score:
             scored.append(Fact(fact.source, fact.topic, fact.text, score=overlap))
     scored.sort(key=lambda f: f.score, reverse=True)
     return scored[:top_k]
