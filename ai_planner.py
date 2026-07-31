@@ -73,6 +73,8 @@ Return ONLY a JSON list of task objects. Each task object must have exactly:
 Rules:
 - Use the guidance above to set durations (e.g. senior dogs get shorter walks).
 - Do NOT invent pets that are not in the known pets list.
+- Give each task a DISTINCT due_time; never schedule two tasks at the exact same
+  time. If several tasks belong in the morning, stagger them (e.g. 08:00, 08:20, 08:40).
 - If the request is unclear or unrelated to pet care, return an empty list [].
 """
 
