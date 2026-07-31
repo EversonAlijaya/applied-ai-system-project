@@ -32,15 +32,18 @@ add your pets, give them care tasks, and generate today's schedule.
 with st.expander("How to use", expanded=False):
     st.markdown(
         """
-1. **Owner** — enter your name and how many minutes you have for pet care today.
+1. **Owner** — enter your name, how many minutes you have today, and optionally
+   when your day starts and ends.
 2. **Pets** — add each of your pets (name, species, and optionally breed).
-3. **Tasks** — pick a pet, describe a care task (walk, feeding, meds…), and set
-   its duration, due time, priority, and how often it repeats.
-4. **Manage** — mark tasks complete as you do them (daily/weekly tasks
-   automatically come back for the next day or week), and use the filters
-   to view one pet's tasks or check what's still pending.
+3. **Plan with AI** — describe what your pets need in plain English. The AI looks
+   up pet-care facts, drafts tasks, checks them for safety, and adds the valid
+   ones for you.
+4. **Tasks** — or add tasks by hand, and mark them complete as you do them
+   (daily/weekly tasks come back automatically). Use the filters to view one
+   pet's tasks or check what's still pending.
 5. **Today's Schedule** — click *Generate schedule* to build your day.
    You'll also be warned if two tasks are booked at the same time.
+6. **Reset app** — clears everything (owner, pets, and tasks) so you can start over.
 """
     )
 
@@ -55,6 +58,10 @@ with st.expander("How scheduling works", expanded=False):
 - Completed tasks are left out automatically.
 """
     )
+
+if st.button("🔄 Reset app"):
+    st.session_state.clear()
+    st.rerun()
 
 st.divider()
 
