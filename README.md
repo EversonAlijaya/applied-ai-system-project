@@ -1,196 +1,242 @@
-# PawPal+ (Module 2 Project)
+# PawPal+ AI: A Natural-Language Pet Care Planner
 
-**PawPal+** is a pet care planning assistant. A busy pet owner tells it how much time they have, what pets they care for, and what tasks each pet needs. PawPal+ builds a realistic daily schedule: high-priority tasks first, everything fitted to the available time, presented in time order, with clear warnings for anything that could not fit or that clashes.
+PawPal+ AI turns a plain-English description of your pets' needs into a validated, time-ordered daily care schedule. You type something like "walk my senior dog every morning and feed my cat twice a day," and the system looks up real pet-care guidance, uses an AI model to draft concrete tasks, checks those tasks for safety, and fits them into your available time while flagging any conflicts.
 
-It ships as two front ends over one logic layer: a Streamlit web app (`app.py`) and a CLI demo script (`main.py`), both powered by the classes in `pawpal_system.py`.
+This project extends my earlier PawPal+ scheduler by adding a Retrieval-Augmented Generation (RAG) planning feature on top of the original scheduling engine.
 
-## ✨ Features
+## Why this matters
 
-- **Daily plan generation**: fits tasks into the owner's available minutes, choosing by priority (high, then medium, then low) with shorter tasks winning ties.
-- **Sorting by time**: any task list can be displayed in chronological order, with "anytime" tasks at the end.
-- **Filtering**: view tasks for a single pet, or by completed/pending status, across the whole household.
-- **Conflict warnings**: two tasks booked at the same date and time produce a readable warning instead of a silent double-booking.
-- **Daily and weekly recurrence**: completing a recurring task automatically creates the next occurrence (tomorrow or next week) with the same details.
-- **Skipped-task explanations**: anything that did not fit is listed with its full details plus exactly how many more minutes it would have needed.
+The original PawPal+ required the user to enter every task by hand: description, duration, time, priority, and how often it repeats. That is precise but slow and unfriendly for a busy owner. PawPal+ AI removes that friction: you describe your day in your own words, and the system produces a sensible, grounded schedule. The AI does not just guess at durations, it retrieves pet-care facts first (for example, that senior dogs need shorter walks) and plans around them, so its output is grounded in guidance rather than invented.
 
-## 🧱 System Design
+## The base project I extended
 
-The logic layer is four classes (see `diagrams/uml_final.mmd` for the full UML):
+My base project is **PawPal+**, built in an earlier module. PawPal+ is a pet-care planning assistant with a clean logic layer (`pawpal_system.py`) of four classes: `Task`, `Pet`, `Owner`, and `Scheduler`. It can generate a daily plan under a time budget (high priority first), sort tasks by time, filter by pet or status, detect scheduling conflicts, and handle daily or weekly recurring tasks. It shipped with a Streamlit web app (`app.py`), a CLI demo (`main.py`), and a pytest suite.
 
-| Class | Responsibility |
-|-------|----------------|
-| `Task` | One care activity: description, duration, due time/date, priority, how often it repeats, and completion status. Knows how to spawn its own next occurrence. |
-| `Pet` | A pet's identity plus its list of tasks, with methods to add, remove, and complete them. |
-| `Owner` | The human: name, minutes available today, preferences, and the list of pets. Aggregates every task across all pets. |
-| `Scheduler` | The brain. Reads tasks through the Owner and provides sorting, filtering, conflict detection, and daily plan generation. |
+PawPal+ AI keeps that entire engine unchanged and adds a new AI layer in front of it. The AI produces the tasks; the original `Scheduler` still does the scheduling, conflict detection, and time budgeting. This means the new feature is genuinely integrated, not a separate demo.
 
-`diagrams/uml.mmd` is the original Phase 1 draft, kept for comparison with the final design.
+## The new AI feature
 
-## 🚀 Getting started
+The new feature is a three-part pipeline that sits in front of the original scheduler:
 
-### Setup
+1. **Retriever (RAG), `retriever.py`.** Searches a small pet-care knowledge base (`knowledge/`, 70 facts across 9 topic files) and returns the facts most relevant to the request. It uses keyword matching with stemming and a small synonym list, and a minimum relevance score so weak, unrelated matches are dropped.
+2. **Planner (the AI brain), `ai_planner.py`.** Sends the request, the retrieved facts, and the list of the owner's pets to Google Gemini (`gemini-3.6-flash`), and asks for a structured JSON list of tasks. The retrieved facts are injected into the prompt, so retrieval actively shapes the plan.
+3. **Guardrails, `guardrails.py`.** Validates every task the AI returns before the system trusts it. It rejects invented pets, invalid times, non-positive durations, and missing fields. Field rules live in `Task.__post_init__`, so the app and the AI share one set of validation rules.
+
+An orchestrator (`ai_assistant.py`) runs these in order, attaches the accepted tasks to the pets, and hands everything to the original `Scheduler`.
+
+## Architecture overview
+
+The full data flow is in [`diagrams/architecture.mmd`](diagrams/architecture.mmd) (Mermaid source). In words:
+
+```
+your request
+   -> input handling (CLI / demo)
+   -> RAG retriever  (searches knowledge/ for relevant facts)
+   -> AI planner     (Gemini turns request + facts into JSON tasks)
+   -> guardrails     (validate and filter the AI's tasks)
+   -> Scheduler      (original PawPal+: plan, budget, find conflicts)
+   -> plan + conflict warnings shown to you
+```
+
+The retriever and planner are the new AI layer. The guardrails are the reliability layer. The `Scheduler`, `Owner`, `Pet`, and `Task` classes are the original PawPal+ system, reused unchanged except for added input validation.
+
+## Setup
+
+You need Python 3 and a free Google Gemini API key.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# 1. Clone and enter the project
+git clone https://github.com/EversonAlijaya/applied-ai-system-project.git
+cd applied-ai-system-project
+
+# 2. Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip3 install -r requirements.txt
+
+# 3. Get a free Gemini API key at https://aistudio.google.com (Get API key)
+# 4. Create your .env file and paste the key into it
+cp .env.example .env             # then edit .env and set GEMINI_API_KEY
+
+# 5. Confirm the key works
+python3 verify_gemini.py
 ```
 
-### Run it
+The `.env` file is git-ignored, so your key never leaves your computer.
+
+## Running it
 
 ```bash
-# Web app:
-streamlit run app.py
+# Interactive assistant (type your own requests):
+python3 ai_cli.py
 
-# CLI demo (prints the full feature walkthrough shown below):
-python main.py
+# One fixed end-to-end demo:
+python3 ai_assistant.py
 
-# Tests:
-python -m pytest
+# Evaluation harness (pass/fail summary):
+python3 evaluate.py
+
+# Original PawPal+ unit tests:
+python3 -m pytest
 ```
 
-## 🖥️ Sample Output
+## Sample interactions
 
-Output from running `python main.py` (the CLI demo script):
+All outputs below are real runs of the current system.
 
-```
-========================================================
-  PawPal+ — Jordan's day
-  Pets: Mochi (dog, Golden Retriever), Biscuit (cat, Tabby)
-  Time available: 80 minutes
-========================================================
-
---- All tasks, sorted by time (added out of order) -----
-    08:00  Morning walk           Mochi     30 min  [high]
-    08:00  Give medication        Biscuit    5 min  [high]
-    08:45  Feeding                Mochi     10 min  [high]
-    09:00  Feeding                Biscuit   10 min  [high]
-    17:00  Fetch practice         Mochi     25 min  [low]
-    19:30  Litter box cleaning    Biscuit   15 min  [medium]
-  anytime  Brush fur              Biscuit   20 min  [low]
-
---- Filter: only Mochi's tasks -------------------------
-    17:00  Fetch practice         Mochi     25 min  [low]
-    08:00  Morning walk           Mochi     30 min  [high]
-    08:45  Feeding                Mochi     10 min  [high]
-
---- Conflict check -------------------------------------
-  ⚠ Conflict at 08:00: 'Morning walk' (Mochi) and 'Give medication' (Biscuit) are scheduled at the same time.
-
---- Recurring: completing 'Morning walk' (daily) -------
-  Completed: Morning walk — done today
-  Auto-created next occurrence: Morning walk on 2026-07-07 at 08:00
-
---- Filter: completed vs pending -----------------------
-  Completed: 1 task(s)
-  Pending:   7 task(s)
-
---- Today's schedule -----------------------------------
-    08:00  Give medication        Biscuit    5 min  [high]
-    08:45  Feeding                Mochi     10 min  [high]
-    09:00  Feeding                Biscuit   10 min  [high]
-    19:30  Litter box cleaning    Biscuit   15 min  [medium]
-  anytime  Brush fur              Biscuit   20 min  [low]
---------------------------------------------------------
-  Scheduled: 5 tasks, 60 of 80 min used
-  Skipped (only 20 min left in the day):
-    17:00  Fetch practice         Mochi     25 min  [low]  needs 5 more min
-========================================================
-```
-
-## 🧪 Testing PawPal+
-
-```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
-```
-
-The suite covers both happy paths and edge cases:
-
-- **Task behavior** — `mark_complete` flips the status; adding a task to a pet grows its task list.
-- **Sorting correctness** — tasks come out in chronological order, with untimed tasks last.
-- **Filtering** — by pet name (unknown pets return an empty list, not an error).
-- **Recurring tasks** — completing a daily task auto-creates a copy due the next day; one-time tasks don't.
-- **Conflict detection** — two tasks at the same time are flagged; the same time on different days is not.
-- **Edge cases** — an owner with no pets, a pet with no tasks, a task longer than the entire time budget, and priority winning over duration when only one task fits.
-
-Sample test output:
+### Example A: a senior dog gets a shorter walk (RAG in action)
 
 ```
-============================= test session starts ==============================
-platform darwin -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0
-collected 13 items
+REQUEST: Walk Mochi every morning, he is a senior dog, and feed Biscuit at 8am and 6pm.
 
-tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [  7%]
-tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [ 15%]
-tests/test_pawpal.py::test_scheduler_skips_completed_tasks_across_pets PASSED [ 23%]
-tests/test_pawpal.py::test_sort_by_time_orders_tasks_and_puts_untimed_last PASSED [ 30%]
-tests/test_pawpal.py::test_filter_by_pet_returns_only_that_pets_tasks PASSED [ 38%]
-tests/test_pawpal.py::test_completing_daily_task_spawns_next_day_occurrence PASSED [ 46%]
-tests/test_pawpal.py::test_completing_one_time_task_spawns_nothing PASSED [ 53%]
-tests/test_pawpal.py::test_find_conflicts_flags_same_time_tasks_across_pets PASSED [ 61%]
-tests/test_pawpal.py::test_no_conflict_for_same_time_on_different_days PASSED [ 69%]
-tests/test_pawpal.py::test_owner_with_no_pets_produces_empty_plan_without_crashing PASSED [ 76%]
-tests/test_pawpal.py::test_pet_with_no_tasks_is_handled PASSED           [ 84%]
-tests/test_pawpal.py::test_task_longer_than_budget_is_skipped PASSED     [ 92%]
-tests/test_pawpal.py::test_high_priority_wins_over_low_when_time_is_tight PASSED [100%]
+STEP 1 - Facts the AI retrieved (RAG):
+  - Senior dogs benefit from shorter, gentler walks, usually around 15 to 20 minutes, to protect aging joints.
+  - Senior dogs may need help with mobility and should avoid long or strenuous exercise.
 
-============================== 13 passed in 0.02s ==============================
+STEP 2 - Tasks accepted by the guardrails:
+  Mochi: Morning walk (15 min, 07:30, medium)
+  Biscuit: Morning feeding (10 min, 08:00, high)
+  Biscuit: Evening feeding (10 min, 18:00, high)
+
+STEP 3 - Scheduled plan (from the original PawPal+ Scheduler):
+Today's plan (120 minutes available):
+- 07:30 — Morning walk for Mochi (15 min, medium priority)
+- 08:00 — Morning feeding for Biscuit (10 min, high priority)
+- 18:00 — Evening feeding for Biscuit (10 min, high priority)
+
+STEP 4 - Conflict check:
+  No conflicts found.
 ```
 
-**Confidence level: ★★★★☆ (4/5).** The core behaviors (sorting, filtering, recurrence, conflict detection, and time-budget planning) are each locked in by at least one test, including the empty and boundary cases. The missing star is for what the suite deliberately doesn't cover: conflict detection only checks exact start-time matches, not duration overlaps, and time inputs are trusted to be valid "HH:MM" strings since the UI constrains them. With more time, overlap detection and malformed-input handling would be the next tests to add.
+The walk is 15 minutes, not the default 30 to 60, because the retriever supplied the senior-dog fact and the planner used it. I never typed "15 minutes."
 
-## 📐 Smarter Scheduling
-
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | `Scheduler.sort_by_time()`, `Scheduler.sort_tasks()` | `sort_by_time` orders tasks by "HH:MM" due time (untimed tasks go last); `sort_tasks` orders by priority (high → low) with duration as tiebreaker |
-| Filtering | `Scheduler.filter_by_pet()`, `Scheduler.filter_by_status()` | Filter all tasks across pets by pet name, or by completed/pending status |
-| Conflict handling | `Scheduler.find_conflicts()` | Flags incomplete tasks scheduled at the same date + time (across any pets) and returns human-readable warnings instead of crashing |
-| Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()` | Completing a "daily"/"weekly" task auto-creates a fresh copy due one day/week later (via `timedelta`); one-time tasks spawn nothing |
-
-The daily plan itself (`Scheduler.generate_plan()`) combines these: it filters out completed and future-dated tasks, sorts by priority, fits what it can into the owner's available minutes, and presents the result in time order.
-
-### Advanced scheduling: priority-based planning under a time budget
-
-Beyond the individual features above, `generate_plan()` implements priority-based scheduling against a hard time budget. Tasks are ranked high, then medium, then low (shorter tasks win ties so more can fit), and each task only makes the plan if it fits in the minutes remaining after everything ranked above it. This means a low-priority task is dropped in favor of a high-priority one even when the low-priority task was added first or is due earlier in the day.
-
-This CLI output (from `python main.py`, 80 available minutes) demonstrates it: the low-priority 25-minute "Fetch practice" loses its spot even though it fits earlier in the day than some scheduled tasks, and the output explains the shortfall:
+### Example B: multiple pets, multiple tasks
 
 ```
---- Today's schedule -----------------------------------
-    08:00  Give medication        Biscuit    5 min  [high]
-    08:45  Feeding                Mochi     10 min  [high]
-    09:00  Feeding                Biscuit   10 min  [high]
-    19:30  Litter box cleaning    Biscuit   15 min  [medium]
-  anytime  Brush fur              Biscuit   20 min  [low]
---------------------------------------------------------
-  Scheduled: 5 tasks, 60 of 80 min used
-  Skipped (only 20 min left in the day):
-    17:00  Fetch practice         Mochi     25 min  [low]  needs 5 more min
+REQUEST: Bella needs two walks and dinner, and Milo needs playtime and his litter box cleaned.
+
+RAG facts used:
+  - Adult dogs generally need 30 to 60 minutes of walking or active exercise each day, often split into two walks.
+  - Two shorter walks are usually better than one very long walk, giving the dog more chances for bathroom breaks and sniffing.
+
+Accepted tasks:
+  Bella: Morning walk (25 min, 08:00, high)
+  Milo: Scoop litter box (5 min, 08:30, high)
+  Bella: Evening walk (25 min, 17:30, high)
+  Bella: Dinner (10 min, 18:00, high)
+  Milo: Playtime (15 min, 18:30, medium)
+
+Plan:
+Today's plan (180 minutes available):
+- 08:00 — Morning walk for Bella (25 min, high priority)
+- 08:30 — Scoop litter box for Milo (5 min, high priority)
+- 17:30 — Evening walk for Bella (25 min, high priority)
+- 18:00 — Dinner for Bella (10 min, high priority)
+- 18:30 — Playtime for Milo (15 min, medium priority)
+
+Conflicts: none
 ```
 
-The behavior is locked in by `test_high_priority_wins_over_low_when_time_is_tight`, which gives the scheduler room for exactly one of two tasks and asserts the high-priority one wins.
+### Example C: tasks kept inside a chosen day window
 
-## 🎨 Output Formatting
+```
+REQUEST: Rocky is a puppy, feed him a few times and give him short walks and training.
+(Day window: 09:00 to 11:00, 180 min available)
 
-Both front ends use structured formatting so schedules read like a real agenda rather than raw object dumps:
+RAG facts used:
+  - Puppies need more frequent meals, usually three to four times a day, because they have small stomachs and high energy needs.
+  - Puppy training sessions should be short, about 5 to 10 minutes, because young dogs have short attention spans.
 
-- **CLI (`main.py`)**: aligned columns via Python format specifications in `print_task_row()` (right-aligned times `{when:>7}`, left-aligned task names `{task.description:<22}`, right-aligned durations `{task.duration:>3}`), section headers drawn by a `header()` helper with horizontal rules, and the ⚠ emoji marking conflict warnings. No external libraries are needed; it is all built on f-strings.
-- **Web app (`app.py`)**: Streamlit components map output types to visual styles: `st.table` for the task list and generated schedule, `st.warning` (yellow banners) for conflicts and skipped tasks, `st.success` (green) for completions and recurring follow-ups, and `st.info` for empty states.
+Accepted tasks:
+  Rocky: Morning meal (10 min, 09:00, high)
+  Rocky: Short morning walk (15 min, 09:20, high)
+  Rocky: Short puppy training session (10 min, 09:50, medium)
+  Rocky: Mid-morning meal (10 min, 10:30, high)
 
-## 📸 Demo Walkthrough
+Plan:
+Today's plan (180 minutes available):
+- 09:00 — Morning meal for Rocky (10 min, high priority)
+- 09:20 — Short morning walk for Rocky (15 min, high priority)
+- 09:50 — Short puppy training session for Rocky (10 min, medium priority)
+- 10:30 — Mid-morning meal for Rocky (10 min, high priority)
 
-Launch the app with `streamlit run app.py` and follow this workflow:
+Conflicts: none
+```
 
-1. **Set up the owner.** Enter your name and how many minutes you have for pet care today. The scheduler treats this as a hard budget: change it and the next generated plan adapts.
-2. **Add pets.** Give each pet a name, species, and optionally a breed, then click *Add pet*. The app supports any number of pets, and every feature below works across all of them.
-3. **Add tasks.** Pick which pet the task is for, describe it (walk, feeding, medication), and set its duration, due time, priority, and whether it repeats (once, daily, or weekly). Click *Add task*.
-4. **Browse the task table.** Tasks display in time order (the `sort_by_time` feature). Use the two dropdowns to filter by pet or by pending/done status: the same `filter_by_pet` and `filter_by_status` methods the tests verify.
-5. **Complete tasks as you do them.** Select a task and click *Complete*. If it was daily or weekly, a green message confirms the next occurrence was auto-created, and it appears in the table with tomorrow's (or next week's) date.
-6. **Generate the schedule.** Click *Generate schedule*. The plan appears as a time-ordered table showing when each task happens, for which pet, and its priority. Above it, yellow warnings flag any two tasks booked at the same time (conflict detection). Below it, each task that did not fit is listed with how many more minutes it would have needed.
+Every task lands between 09:00 and 11:00 because the day window was passed into the planner's prompt. The tasks are also short, matching the retrieved puppy facts.
 
-The same workflow runs end to end in the terminal via `python main.py`; its full output is the fenced code block in the **Sample Output** section above, demonstrating sorting, filtering, recurrence, conflict detection, and the generated plan with a skipped task.
+## Reliability and guardrails
+
+The guardrails reject bad AI output before it reaches the scheduler. Running `python3 guardrails.py` feeds a deliberately messy AI response through the validator:
+
+```
+ACCEPTED tasks:
+  Mochi: Morning walk (15 min, 08:00, medium)
+
+WARNINGS (rejected):
+  - Task 2: 'Walk Rex' is for unknown pet 'Rex', skipped.
+  - Task 3: 'Feeding' rejected (duration must be a positive whole number of minutes, got -5).
+  - Task 4: 'Late feeding' rejected (due_time must be 24-hour 'HH:MM' or empty, got '25:99').
+  - Task 5: missing fields ['frequency'], skipped.
+```
+
+The one valid task is kept; the invented pet, negative duration, invalid time, and missing field are each rejected with a clear reason.
+
+## Testing summary
+
+The evaluation harness (`evaluate.py`) runs the system on predefined inputs and prints a pass/fail summary. It has component checks (no API key needed: retriever and guardrails) and end-to-end checks (calling Gemini). Because AI output varies, the end-to-end checks test properties that should always hold (for example, a senior dog's walk is short), not exact wording.
+
+```
+PawPal+ evaluation harness
+
+COMPONENT CHECKS (no API key needed)
+  PASS - retriever finds a senior-dog fact
+  PASS - retriever handles feed/meals synonym for puppy
+  PASS - retriever returns nothing for empty input
+  PASS - retriever returns nothing for gibberish
+  PASS - retriever keeps only strong matches (score >= 2)
+  PASS - guardrails accept exactly the 1 valid task
+  PASS - guardrails reject the 4 bad tasks
+  PASS - scheduler keeps the high-priority task within budget
+
+END-TO-END CHECKS (calling Gemini)
+  PASS - senior dog gets a short walk (<= 25 min)
+  PASS - off-topic request yields an empty plan
+  PASS - tasks respect the 09:00-11:00 day window
+
+SUMMARY: 11/11 checks passed.
+```
+
+The original PawPal+ scheduler logic is also covered by 13 unit tests (`python3 -m pytest`), all passing. What worked well: the RAG grounding reliably changes durations, and the guardrails catch every category of bad output I tested. What was harder: keyword retrieval needed several rounds of tuning (stemming, synonyms, a score threshold) before it stopped returning unrelated facts. That tuning story is written up in `model_card.md`.
+
+## Design decisions and trade-offs
+
+- **Keyword RAG instead of embeddings.** I used keyword matching with stemming and synonyms rather than vector embeddings. The trade-off: it is simple, free, and easy to explain, but it cannot match synonyms it was not told about. I chose transparency and zero setup over maximum recall.
+- **Validation in the class, not just the AI layer.** Field rules live in `Task.__post_init__`, so both the app and the AI go through the same checks. This also addressed feedback from my earlier project about adding input validation.
+- **The scheduler detects conflicts but does not resolve them.** I kept the original human-in-the-loop design: the system flags a clash and leaves the fix to the user. I added a prompt rule so the AI staggers task times to avoid most accidental overlaps.
+- **A fixed model name.** I pinned `gemini-3.6-flash` rather than a "latest" alias so sample outputs stay reproducible.
+
+## Limitations and reflection
+
+Known limitations and my full reflection (including how I used AI during development, one helpful and one flawed AI suggestion, and future improvements) are in [`model_card.md`](model_card.md).
+
+## Repository structure
+
+```
+knowledge/            pet-care knowledge base (RAG source, 9 files)
+retriever.py          RAG retriever (search + stemming + synonyms)
+ai_planner.py         AI planner (Gemini, structured JSON output)
+guardrails.py         validates and filters AI output
+ai_assistant.py       orchestrator: request -> plan
+ai_cli.py             interactive command-line tester
+evaluate.py           evaluation harness (pass/fail summary)
+pawpal_system.py      original PawPal+ engine (Task, Pet, Owner, Scheduler)
+app.py, main.py       original Streamlit app and CLI demo
+tests/                original pytest suite (13 tests)
+diagrams/             architecture.mmd and UML source
+verify_gemini.py      one-off API key check
+```
+
+## Demo video (optional)
+
+A short Loom walkthrough: _(add link here if recorded)_
