@@ -63,3 +63,26 @@ def validate_tasks(raw_tasks, pet_names: list) -> tuple:
         accepted.append((item["pet"], task))
 
     return accepted, warnings
+
+
+if __name__ == "__main__":
+    # Demo: feed a deliberately messy AI response and watch the guardrail
+    # keep the good task and reject the bad ones. Run: python3 guardrails.py
+    pet_names = ["Mochi", "Biscuit"]
+    messy_ai_output = [
+        {"pet": "Mochi", "description": "Morning walk", "duration": 15, "due_time": "08:00", "priority": "medium", "frequency": "daily"},
+        {"pet": "Rex", "description": "Walk Rex", "duration": 20, "due_time": "09:00", "priority": "low", "frequency": "daily"},
+        {"pet": "Biscuit", "description": "Feeding", "duration": -5, "due_time": "18:00", "priority": "high", "frequency": "daily"},
+        {"pet": "Biscuit", "description": "Late feeding", "duration": 10, "due_time": "25:99", "priority": "high", "frequency": "daily"},
+        {"pet": "Mochi", "description": "Play", "duration": 10, "due_time": "17:00", "priority": "medium"},
+    ]
+
+    accepted, warnings = validate_tasks(messy_ai_output, pet_names)
+
+    print("ACCEPTED tasks:")
+    for pet, task in accepted:
+        print(f"  {pet}: {task.description} ({task.duration} min, {task.due_time}, {task.priority})")
+
+    print("\nWARNINGS (rejected):")
+    for warning in warnings:
+        print(f"  - {warning}")
