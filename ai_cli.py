@@ -8,7 +8,29 @@ Type 'quit' (or 'q') to exit.
 """
 
 from ai_assistant import plan_from_request
-from pawpal_system import Owner, Pet
+from pawpal_system import Owner, Pet, is_valid_hhmm
+
+
+def ask_minutes(default: int = 120) -> int:
+    """Ask how many minutes are available today; fall back to default."""
+    answer = input(f"How many minutes do you have for pet care today? (Enter for {default})\n> ").strip()
+    if not answer:
+        return default
+    if answer.isdigit() and int(answer) > 0:
+        return int(answer)
+    print(f"  (Didn't understand '{answer}', using {default} minutes.)")
+    return default
+
+
+def ask_time(label: str, default: str) -> str:
+    """Ask for a 24-hour HH:MM time; fall back to default if blank/invalid."""
+    answer = input(f"What time do you {label}? 24-hour HH:MM (Enter for {default})\n> ").strip()
+    if not answer:
+        return default
+    if is_valid_hhmm(answer):
+        return answer
+    print(f"  (Didn't understand '{answer}', using {default}.)")
+    return default
 
 
 def build_owner() -> Owner:
@@ -17,7 +39,13 @@ def build_owner() -> Owner:
     print("Example:  Rocky:dog, Luna:cat")
     line = input("Your pets (or press Enter for defaults Mochi:dog, Biscuit:cat):\n> ").strip()
 
-    owner = Owner("You", available_minutes=120)
+    minutes = ask_minutes()
+    day_start = ask_time("start your day", "07:00")
+    day_end = ask_time("end your day", "21:00")
+
+    owner = Owner("You", available_minutes=minutes)
+    owner.set_preference("day_start", day_start)
+    owner.set_preference("day_end", day_end)
     if not line:
         owner.add_pet(Pet("Mochi", "dog", "senior mixed breed"))
         owner.add_pet(Pet("Biscuit", "cat"))
@@ -29,7 +57,8 @@ def build_owner() -> Owner:
             if name:
                 owner.add_pet(Pet(name, species))
 
-    print("\nPets on file:", ", ".join(pet.describe() for pet in owner.pets))
+    print(f"\nAvailable: {minutes} min/day, active hours {day_start}-{day_end}.")
+    print("Pets on file:", ", ".join(pet.describe() for pet in owner.pets))
     print("(Tip: the AI can only make tasks for these pets; others are rejected by the guardrails.)")
     return owner
 
