@@ -44,14 +44,21 @@ def _client() -> genai.Client:
     return _CLIENT
 
 
-def build_prompt(request: str, facts: list, pet_names: list) -> str:
+def build_prompt(request: str, facts: list, pet_names: list, day_start: str = "", day_end: str = "") -> str:
     """Assemble the full instruction text we send to Gemini.
 
-    The retrieved facts and the known pet names are injected here, which is
-    what makes this Retrieval-Augmented Generation rather than a plain guess.
+    The retrieved facts, known pet names, and the owner's day window are
+    injected here, which is what makes this Retrieval-Augmented Generation
+    rather than a plain guess.
     """
     facts_text = "\n".join(f"- {f.text}" for f in facts) or "- (no relevant facts found)"
     pets_text = ", ".join(pet_names) if pet_names else "(no pets on file)"
+    window_rule = ""
+    if day_start and day_end:
+        window_rule = (
+            f"\n- Schedule every task between {day_start} and {day_end} (24-hour). "
+            f"Do not place any task before {day_start} or after {day_end}."
+        )
     return f"""You are PawPal+, a careful pet-care planning assistant.
 Turn the owner's request into a list of concrete daily care tasks.
 
@@ -74,12 +81,13 @@ Rules:
 - Use the guidance above to set durations (e.g. senior dogs get shorter walks).
 - Do NOT invent pets that are not in the known pets list.
 - Give each task a DISTINCT due_time; never schedule two tasks at the exact same
-  time. If several tasks belong in the morning, stagger them (e.g. 08:00, 08:20, 08:40).
+  time. If several tasks belong in the morning, stagger them (e.g. 08:00, 08:20, 08:40).{window_rule}
 - If the request is unclear or unrelated to pet care, return an empty list [].
 """
 
 
-def plan_tasks(request: str, pet_names: list, top_k: int = 4) -> tuple:
+def plan_tasks(request: str, pet_names: list, top_k: int = 4,
+               day_start: str = "", day_end: str = "") -> tuple:
     """Turn a request into (list of task dicts, list of facts used by RAG).
 
     Steps: retrieve facts -> build prompt -> ask Gemini -> parse JSON.
@@ -87,7 +95,7 @@ def plan_tasks(request: str, pet_names: list, top_k: int = 4) -> tuple:
     retrieved, so callers can show what guidance the plan was based on.
     """
     facts = retrieve(request, load_facts(), top_k=top_k)
-    prompt = build_prompt(request, facts, pet_names)
+    prompt = build_prompt(request, facts, pet_names, day_start, day_end)
 
     client = _client()  # keep a named reference so it stays open during the call
     response = client.models.generate_content(

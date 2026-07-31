@@ -42,9 +42,13 @@ def _find_pet(owner: Owner, name: str) -> Pet | None:
 def plan_from_request(owner: Owner, request: str, top_k: int = 4) -> PlanResult:
     """Run the full pipeline for one request and return a PlanResult."""
     pet_names = [pet.name for pet in owner.pets]
+    day_start = owner.preferences.get("day_start", "")
+    day_end = owner.preferences.get("day_end", "")
 
-    # 1. AI proposes tasks, grounded in retrieved facts.
-    raw_tasks, facts = plan_tasks(request, pet_names, top_k=top_k)
+    # 1. AI proposes tasks, grounded in retrieved facts and the owner's day window.
+    raw_tasks, facts = plan_tasks(
+        request, pet_names, top_k=top_k, day_start=day_start, day_end=day_end
+    )
 
     # 2. Guardrails keep only the valid tasks.
     accepted, warnings = validate_tasks(raw_tasks, pet_names)
