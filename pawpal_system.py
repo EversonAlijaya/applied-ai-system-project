@@ -228,6 +228,17 @@ class Scheduler:
         self.plan = self.sort_by_time(plan)
         return self.plan
 
+    def _pet_for_task(self, task: Task) -> str:
+        """Return the name of the pet that owns this exact task object.
+
+        Matches by identity ('is'), not equality, because two different pets
+        can have value-identical tasks (e.g. both have a "Morning meal").
+        """
+        for pet in self.owner.pets:
+            if any(owned is task for owned in pet.tasks):
+                return pet.name
+        return ""
+
     def explain_plan(self) -> str:
         """Return a human-readable explanation of why the plan was chosen."""
         if not self.plan:
@@ -236,5 +247,7 @@ class Scheduler:
         lines = [f"Today's plan ({self.owner.available_minutes} minutes available):"]
         for task in self.plan:
             when = task.due_time if task.due_time else "anytime"
-            lines.append(f"- {when} — {task.description} ({task.duration} min, {task.priority} priority)")
+            pet_name = self._pet_for_task(task)
+            who = f" for {pet_name}" if pet_name else ""
+            lines.append(f"- {when} — {task.description}{who} ({task.duration} min, {task.priority} priority)")
         return "\n".join(lines)
