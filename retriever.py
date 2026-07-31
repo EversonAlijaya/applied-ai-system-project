@@ -21,6 +21,24 @@ STOPWORDS = {
     "every", "each", "some", "this", "that", "it", "be", "can", "do",
 }
 
+# Obvious pet-care synonyms, mapped onto a shared "concept" word. This is a
+# hand-made shortcut so that, for example, a request to "feed" still matches a
+# fact that talks about "meals". Keys and values are STEMMED forms (e.g. we
+# write "meal", not "meals", because stemming runs first). It only covers words
+# we listed by hand; embeddings would handle synonyms automatically.
+SYNONYMS = {
+    "meal": "feed",
+    "food": "feed",
+    "eat": "feed",
+    "feeding": "feed",
+    "stroll": "walk",
+    "exercise": "walk",
+    "brush": "groom",
+    "old": "senior",
+    "aging": "senior",
+    "elderly": "senior",
+}
+
 DEFAULT_KNOWLEDGE_DIR = "knowledge"
 
 
@@ -46,18 +64,31 @@ def _stem(word: str) -> str:
         if word.endswith(suffix) and len(word) - len(suffix) >= 3:
             if suffix == "ies":
                 return word[:-3] + "y"  # puppies -> puppy
-            return word[: -len(suffix)]
+            root = word[: -len(suffix)]
+            # English doubles the final consonant before "-ing" (trim -> trimming,
+            # run -> running). Undo that so "trimming" becomes "trim", not "trimm".
+            # Only collapse doubled CONSONANTS, so "feeding" -> "feed" stays intact.
+            if suffix == "ing" and len(root) >= 2 and root[-1] == root[-2] and root[-1] not in "aeiou":
+                root = root[:-1]
+            return root
     return word
 
 
 def _tokens(text: str) -> set:
     """Turn text into a set of stemmed, meaningful words.
 
-    Steps: lowercase and drop punctuation, remove stopwords, then stem.
-    Example: "Walking my senior dogs!" -> {"walk", "senior", "dog"}
+    Steps: lowercase and drop punctuation, remove stopwords, stem, then map
+    synonyms onto a shared concept word.
+    Example: "Feeding my elderly dogs!" -> {"feed", "senior", "dog"}
     """
     cleaned = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
-    return {_stem(word) for word in cleaned.split() if word not in STOPWORDS}
+    result = set()
+    for word in cleaned.split():
+        if word in STOPWORDS:
+            continue
+        stem = _stem(word)
+        result.add(SYNONYMS.get(stem, stem))  # swap in the concept word if we have one
+    return result
 
 
 def load_facts(knowledge_dir: str = DEFAULT_KNOWLEDGE_DIR) -> list:
