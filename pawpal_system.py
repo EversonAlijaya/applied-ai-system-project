@@ -11,6 +11,16 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+VALID_FREQUENCIES = ("once", "daily", "weekly")
+
+
+def is_valid_hhmm(value: str) -> bool:
+    """Return True if value is a 24-hour time like '08:00' (or '8:00')."""
+    parts = value.split(":")
+    if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+        return False
+    hours, minutes = int(parts[0]), int(parts[1])
+    return 0 <= hours <= 23 and 0 <= minutes <= 59
 
 
 @dataclass
@@ -24,6 +34,30 @@ class Task:
     frequency: str = "once"  # "once", "daily", or "weekly"
     due_date: str = ""  # ISO "YYYY-MM-DD"; empty means today
     completed: bool = False
+
+    def __post_init__(self) -> None:
+        """Validate fields right after creation so bad data fails loudly.
+
+        Runs automatically for every Task, including AI-generated ones, so a
+        negative duration or an invalid time is rejected with a clear message
+        instead of causing a subtle bug later.
+        """
+        if not isinstance(self.description, str) or not self.description.strip():
+            raise ValueError("description must be a non-empty string")
+        # bool is a subtype of int in Python, so exclude it explicitly.
+        if isinstance(self.duration, bool) or not isinstance(self.duration, int) or self.duration <= 0:
+            raise ValueError(f"duration must be a positive whole number of minutes, got {self.duration!r}")
+        if self.priority not in PRIORITY_ORDER:
+            raise ValueError(f"priority must be one of {list(PRIORITY_ORDER)}, got {self.priority!r}")
+        if self.frequency not in VALID_FREQUENCIES:
+            raise ValueError(f"frequency must be one of {list(VALID_FREQUENCIES)}, got {self.frequency!r}")
+        if self.due_time and not is_valid_hhmm(self.due_time):
+            raise ValueError(f"due_time must be 24-hour 'HH:MM' or empty, got {self.due_time!r}")
+        if self.due_date:
+            try:
+                date.fromisoformat(self.due_date)
+            except ValueError:
+                raise ValueError(f"due_date must be 'YYYY-MM-DD' or empty, got {self.due_date!r}")
 
     def edit(self, description: str = None, duration: int = None, priority: str = None) -> None:
         """Modify the task's details, leaving unspecified fields unchanged."""
