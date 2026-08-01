@@ -6,14 +6,14 @@ flowchart TD
     User([User types a plain-English<br/>pet-care request]):::human
 
     subgraph Guards["Reliability & Guardrails"]
-        InputCheck["Input Validation<br/>reject empty / too long / unsafe text"]
+        InputCheck["Input check<br/>reject empty request;<br/>off-topic yields an empty plan"]
         OutputCheck["Output Guardrail<br/>check valid times, durations,<br/>and only known pets"]
     end
 
     subgraph AI["AI Layer (new for this project)"]
         Retriever["RAG Retriever<br/>find relevant pet-care facts"]
         KB[("Pet-Care<br/>Knowledge Base")]
-        Planner["LLM Planner / Agent (Claude)<br/>turn request + retrieved facts<br/>into structured Tasks"]
+        Planner["LLM Planner (Gemini gemini-3.6-flash)<br/>turn request + retrieved facts<br/>into structured Tasks"]
     end
 
     subgraph Core["Existing PawPal+ System"]
