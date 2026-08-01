@@ -82,9 +82,11 @@ python3 -m pytest
 
 ## Sample interactions
 
-All outputs below are real runs of the current system.
+All outputs below are real runs of the current system. The command that produced each example is shown above it, so each run can be reproduced.
 
 ### Example A: a senior dog gets a shorter walk (RAG in action)
+
+**Command:** `python3 ai_assistant.py`
 
 ```
 REQUEST: Walk Mochi every morning, he is a senior dog, and feed Biscuit at 8am and 6pm.
@@ -112,6 +114,8 @@ The walk is 15 minutes, not the default 30 to 60, because the retriever supplied
 
 ### Example B: multiple pets, multiple tasks
 
+**Command:** `python3 ai_cli.py` (pets: `Bella:dog, Milo:cat`, then type the request below)
+
 ```
 REQUEST: Bella needs two walks and dinner, and Milo needs playtime and his litter box cleaned.
 
@@ -138,6 +142,8 @@ Conflicts: none
 ```
 
 ### Example C: tasks kept inside a chosen day window
+
+**Command:** `python3 ai_cli.py` (pet: `Rocky:dog`, day start `09:00`, day end `11:00`, then type the request below)
 
 ```
 REQUEST: Rocky is a puppy, feed him a few times and give him short walks and training.
@@ -185,6 +191,8 @@ The one valid task is kept; the invented pet, negative duration, invalid time, a
 ## Testing summary
 
 The evaluation harness (`evaluate.py`) runs the system on predefined inputs and prints a pass/fail summary. It has component checks (no API key needed: retriever and guardrails) and end-to-end checks (calling Gemini). Because AI output varies, the end-to-end checks test properties that should always hold (for example, a senior dog's walk is short), not exact wording.
+
+**Command:** `python3 evaluate.py`
 
 ```
 PawPal+ evaluation harness
